@@ -5,7 +5,6 @@ use std::fs;
 pub struct AccountScanner;
 
 impl Scanner for AccountScanner {
-    fn name(&self) -> &str { "Account Backdoor Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();

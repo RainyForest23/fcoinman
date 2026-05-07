@@ -17,7 +17,6 @@ impl FileScanner {
 }
 
 impl Scanner for FileScanner {
-    fn name(&self) -> &str { "File & Binary Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();

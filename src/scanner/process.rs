@@ -12,7 +12,6 @@ impl ProcessScanner {
 }
 
 impl Scanner for ProcessScanner {
-    fn name(&self) -> &str { "Process Anomaly Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         list_pids()

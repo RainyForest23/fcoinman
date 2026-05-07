@@ -14,7 +14,6 @@ impl ToolsScanner {
 }
 
 impl Scanner for ToolsScanner {
-    fn name(&self) -> &str { "Attacker Tool Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         check_attacker_tools(&self.ioc)

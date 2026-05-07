@@ -13,7 +13,6 @@ impl NetworkScanner {
 }
 
 impl Scanner for NetworkScanner {
-    fn name(&self) -> &str { "Network Connection Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
@@ -44,8 +43,8 @@ pub fn parse_hex_ip(hex: &str) -> Option<String> {
     let n = u32::from_str_radix(hex, 16).ok()?;
     // /proc/net/tcp stores IPs in host byte order on little-endian machines,
     // which means the bytes are reversed relative to the dotted notation.
-    let bytes = n.to_le_bytes(); // little-endian → network byte order
-    Some(Ipv4Addr::new(bytes[3], bytes[2], bytes[1], bytes[0]).to_string())
+    let bytes = n.to_le_bytes(); // [194, 87, 143, 62] for "3E8F57C2"
+    Some(Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]).to_string())
 }
 
 pub fn parse_hex_port(hex: &str) -> Option<u16> {

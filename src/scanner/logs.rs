@@ -7,7 +7,6 @@ use std::path::Path;
 pub struct LogScanner;
 
 impl Scanner for LogScanner {
-    fn name(&self) -> &str { "Log & Timeline Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();

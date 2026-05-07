@@ -7,7 +7,7 @@ pub struct IocDatabase {
     pub irc_ports: Vec<u16>,
     pub known_bad_hashes: Vec<String>,
     pub suspicious_paths: Vec<String>,
-    pub standard_binary_paths: Vec<String>,
+    pub standard_binary_paths: Vec<String>,  // used by persistence.rs STANDARD_BINARY_PREFIXES
     pub attacker_tools: Vec<String>,
     pub xmrig_cmdline_signatures: Vec<String>,
     pub p2pinfect_signatures: Vec<String>,
@@ -39,6 +39,7 @@ impl IocDatabase {
         self.suspicious_paths.iter().any(|p| path.starts_with(p.as_str()))
     }
 
+    #[allow(dead_code)]
     pub fn is_standard_binary_path(&self, path: &str) -> bool {
         self.standard_binary_paths.iter().any(|p| path.starts_with(p.as_str()))
     }

@@ -12,7 +12,6 @@ const RECENT_DAYS_SECS: u64 = 30 * 86400;
 pub struct PersistenceScanner;
 
 impl Scanner for PersistenceScanner {
-    fn name(&self) -> &str { "Persistence Mechanism Scanner" }
 
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();

@@ -9,6 +9,5 @@ pub mod tools;
 use crate::finding::Finding;
 
 pub trait Scanner {
-    fn name(&self) -> &str;
     fn scan(&self) -> Vec<Finding>;
 }
