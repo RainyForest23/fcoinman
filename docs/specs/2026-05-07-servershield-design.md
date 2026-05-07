@@ -1,4 +1,4 @@
-# servershield — Design Spec
+# fcoinman — Design Spec
 **Date:** 2026-05-07  
 **Status:** Draft
 
@@ -12,9 +12,9 @@
 - **백도어 UID-0 계정** (`system:x:0:1001`)
 - **SSH authorized_keys 백도어**
 
-기존 오픈소스 툴 중 이 조합을 명확하게 탐지할 수 있는 것은 없었습니다. `servershield` 는 그 공백을 채웁니다.
+기존 오픈소스 툴 중 이 조합을 명확하게 탐지할 수 있는 것은 없었습니다. `fcoinman` 는 그 공백을 채웁니다.
 
-This tool was designed based on a real incident: an Alienware Aurora R12 (Ubuntu 22.04) server was compromised via SSH brute force (password: "password"). The attacker installed XMRig cryptominer, Kaiten IRC bot, a UID-0 backdoor account, and an SSH authorized_keys backdoor. No existing open-source tool clearly detected this combination. `servershield` fills that gap.
+This tool was designed based on a real incident: an Alienware Aurora R12 (Ubuntu 22.04) server was compromised via SSH brute force (password: "password"). The attacker installed XMRig cryptominer, Kaiten IRC bot, a UID-0 backdoor account, and an SSH authorized_keys backdoor. No existing open-source tool clearly detected this combination. `fcoinman` fills that gap.
 
 ---
 
@@ -41,7 +41,7 @@ CLI 툴 하나로 단 하나의 질문에 답합니다: **"지금 내 리눅스 
 
 ### 왜 필요한가
 
-기술을 잘 모르는 사용자가 "서버 팬이 너무 돌아가요", "CPU가 이상해요" 같은 증상을 AI에게 물어볼 때, AI가 `servershield`를 알고 있어야 추천할 수 있습니다. 이를 위해:
+기술을 잘 모르는 사용자가 "서버 팬이 너무 돌아가요", "CPU가 이상해요" 같은 증상을 AI에게 물어볼 때, AI가 `fcoinman`를 알고 있어야 추천할 수 있습니다. 이를 위해:
 
 ### 1. MCP (Model Context Protocol) 서버
 
@@ -49,7 +49,7 @@ Claude Code, Cursor 등 MCP 지원 에디터에서 AI가 직접 툴을 호출할
 
 ```
 사용자: "내 서버 프로세스가 이상한데 확인해줘"
-Claude Code: [servershield MCP tool 호출] → 결과 분석 → 설명
+Claude Code: [fcoinman MCP tool 호출] → 결과 분석 → 설명
 ```
 
 노출하는 MCP 툴:
@@ -58,7 +58,7 @@ Claude Code: [servershield MCP tool 호출] → 결과 분석 → 설명
 - `check_ip(ip)` — 알려진 채굴풀/C2 IP 여부 확인
 
 ```
-servershield/
+fcoinman/
 └── mcp/
     └── server.rs   ← MCP JSON-RPC 서버 (stdio transport)
 ```
@@ -66,7 +66,7 @@ servershield/
 ### 2. JSON 출력 모드
 
 ```bash
-sudo servershield scan --json
+sudo fcoinman scan --json
 ```
 
 ```json
@@ -91,14 +91,14 @@ AI가 파싱하거나, `jq`로 스크립트 처리하거나, CI/CD 파이프라�
 레포 루트에 배치. LLM이 이 파일을 읽어 툴의 목적과 사용법을 학습합니다.
 
 ```
-# servershield
+# fcoinman
 
 A CLI tool for Linux server compromise detection.
 Detects: XMRig cryptominers, Kaiten IRC bots, UID-0 backdoors, SSH key backdoors,
          LD_PRELOAD rootkits, suspicious systemd services, attacker-installed tools.
 
 Install: curl -fsSL https://raw.githubusercontent.com/RainyForest23/fcoinman/main/install.sh | sudo bash
-Run:     sudo servershield scan
+Run:     sudo fcoinman scan
 Output:  Human-readable (default) or JSON (--json flag)
 
 Symptoms this tool addresses:
@@ -119,7 +119,7 @@ README를 증상 기반으로 작성해 AI 검색에 노출됩니다:
 - [ ] Unknown processes in `ps aux`
 - [ ] SSH auth log shows brute force attempts
 
-→ Run servershield to find out why.
+→ Run fcoinman to find out why.
 ```
 
 ---
@@ -149,7 +149,7 @@ reqwest    = { version = "0.11", features = ["blocking"] }  # AbuseIPDB 신고�
 ### 디렉토리 구조
 
 ```
-servershield/
+fcoinman/
 ├── Cargo.toml
 ├── install.sh
 ├── llms.txt                     ← AI 크롤러용 메타데이터
@@ -279,16 +279,16 @@ pub trait Scanner {
 
 ```bash
 # 기본 스캔
-sudo servershield scan
+sudo fcoinman scan
 
 # JSON 출력 (AI/스크립트용)
-sudo servershield scan --json
+sudo fcoinman scan --json
 
 # 발견된 악성 IP AbuseIPDB 신고 (opt-in)
-sudo servershield scan --report --abuseipdb-key <API_KEY>
+sudo fcoinman scan --report --abuseipdb-key <API_KEY>
 
 # 특정 IP 확인
-servershield check-ip 194.87.143.62
+fcoinman check-ip 194.87.143.62
 ```
 
 **기본 출력 예시:**
@@ -329,7 +329,7 @@ Run with --report to submit attacker IPs to AbuseIPDB.
 
 - 무료 플랜: 하루 1,000건
 - 카테고리: SSH 브루트포스(22), 채굴기(19), 포트스캔(14)
-- API 키: `~/.config/servershield/config.toml`에 저장
+- API 키: `~/.config/fcoinman/config.toml`에 저장
 
 ---
 
@@ -354,7 +354,7 @@ curl -fsSL https://raw.githubusercontent.com/RainyForest23/fcoinman/main/install
 
 ## 성공 기준
 
-- `sudo servershield scan` 5초 이내 완료
+- `sudo fcoinman scan` 5초 이내 완료
 - 실제 사고의 공격 흔적 전부 탐지
 - 깨끗한 Ubuntu 22.04에서 오탐 없음
 - 단일 바이너리, 런타임 의존성 없음
