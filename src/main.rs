@@ -32,7 +32,7 @@ fn main() {
 fn run_scan(json: bool) {
     let scanners: Vec<(&str, Box<dyn Scanner>)> = vec![
         ("accounts",    Box::new(AccountScanner)),
-        ("persistence", Box::new(PersistenceScanner)),
+        ("persistence", Box::new(PersistenceScanner::new(IocDatabase::load()))),
         ("files",       Box::new(FileScanner::new(IocDatabase::load()))),
         ("process",     Box::new(ProcessScanner::new(IocDatabase::load()))),
         ("network",     Box::new(NetworkScanner::new(IocDatabase::load()))),

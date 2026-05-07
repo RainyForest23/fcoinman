@@ -4,6 +4,8 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct ScanReport<'a> {
     pub verdict: &'static str,
+    pub scanned_at: String,
+    pub hostname: String,
     pub findings: &'a [Finding],
     pub summary: Summary,
 }
@@ -28,8 +30,16 @@ pub fn print_json(findings: &[Finding]) {
         "CLEAN"
     };
 
+    let scanned_at = chrono::Utc::now().to_rfc3339();
+    let hostname = std::fs::read_to_string("/etc/hostname")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
     let report = ScanReport {
         verdict,
+        scanned_at,
+        hostname,
         findings,
         summary: Summary { critical, warning, info },
     };

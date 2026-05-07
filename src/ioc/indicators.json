@@ -2,7 +2,8 @@
   "mining_pool_ips": [
     "194.87.143.62",
     "8.217.191.41",
-    "162.19.241.67"
+    "162.19.241.67",
+    "54.38.240.253"
   ],
   "mining_pool_ports": [3333, 4444, 5555, 5332, 14444, 45700],
   "irc_ports": [6667, 6697, 7000, 6666],
@@ -18,7 +19,9 @@
     "masscan", "hydra", "ncrack", "medusa", "xmrig", "p2pinfect"
   ],
   "xmrig_cmdline_signatures": [
-    "--donate-level", "stratum+tcp://", "stratum+ssl://"
+    "--donate-level", "stratum+tcp://", "stratum+ssl://",
+    "--algo kawpow", "--algo rx/", "--algo cn/", "--algo gr",
+    "xmrig", "kawpow", "nicehash"
   ],
   "p2pinfect_signatures": ["p2pinfect", ".dbus-daemon"]
 }

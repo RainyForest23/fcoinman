@@ -1,21 +1,29 @@
 use crate::finding::Finding;
+use crate::ioc::IocDatabase;
 use crate::scanner::Scanner;
 use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
-const STANDARD_BINARY_PREFIXES: &[&str] = &[
-    "/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/",
+const SUSPICIOUS_EXEC_PREFIXES: &[&str] = &[
+    "/tmp/", "/dev/shm/", "/var/bin/", "/var/tmp/",
 ];
+
 const RECENT_DAYS_SECS: u64 = 30 * 86400;
 
-pub struct PersistenceScanner;
+pub struct PersistenceScanner {
+    pub ioc: IocDatabase,
+}
+
+impl PersistenceScanner {
+    pub fn new(ioc: IocDatabase) -> Self { Self { ioc } }
+}
 
 impl Scanner for PersistenceScanner {
 
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
-        findings.extend(scan_systemd_services());
+        findings.extend(scan_systemd_services(&self.ioc));
         findings.extend(scan_crontabs());
         findings.extend(check_ld_preload());
         findings.extend(scan_kernel_modules());
@@ -23,9 +31,16 @@ impl Scanner for PersistenceScanner {
     }
 }
 
-fn is_nonstandard_exec(exec_start: &str) -> bool {
-    let binary = exec_start.split_whitespace().next().unwrap_or("");
-    !STANDARD_BINARY_PREFIXES.iter().any(|p| binary.starts_with(p))
+fn strip_systemd_prefix(exec: &str) -> &str {
+    // systemd allows !, !!, -, @, + prefixes before the binary path
+    let exec = exec.trim_start_matches('!');
+    let exec = exec.trim_start_matches('-');
+    exec.trim_start_matches('@')
+}
+
+fn is_suspicious_exec_path(exec_start: &str) -> bool {
+    let binary = strip_systemd_prefix(exec_start.split_whitespace().next().unwrap_or(""));
+    SUSPICIOUS_EXEC_PREFIXES.iter().any(|p| binary.starts_with(p))
 }
 
 fn age_secs(path: &Path) -> Option<u64> {
@@ -33,7 +48,7 @@ fn age_secs(path: &Path) -> Option<u64> {
     SystemTime::now().duration_since(modified).ok().map(|d| d.as_secs())
 }
 
-fn scan_systemd_services() -> Vec<Finding> {
+fn scan_systemd_services(ioc: &IocDatabase) -> Vec<Finding> {
     let mut findings = Vec::new();
     let dirs = ["/etc/systemd/system", "/lib/systemd/system"];
 
@@ -58,13 +73,22 @@ fn scan_systemd_services() -> Vec<Finding> {
                 if !line.starts_with("ExecStart=") { continue; }
                 let exec = &line["ExecStart=".len()..];
 
-                if is_nonstandard_exec(exec) {
+                if is_suspicious_exec_path(exec) {
                     findings.push(Finding::critical(
-                        "Non-standard systemd service binary",
-                        "Service ExecStart points outside standard system paths — common attacker persistence",
+                        "Systemd service runs from suspicious path",
+                        "Service ExecStart in /tmp, /dev/shm, or /var/bin — common attacker persistence",
                         &format!("{}: {}", path_str, line),
                     ));
                 }
+
+                if ioc.has_xmrig_signature(exec) {
+                    findings.push(Finding::critical(
+                        "Systemd service contains miner signature",
+                        "Service ExecStart contains cryptominer keywords (stratum, --algo, --donate-level)",
+                        &format!("{}: {}", path_str, line),
+                    ));
+                }
+
                 if let Some(age) = age_secs(&path) {
                     if age < RECENT_DAYS_SECS {
                         findings.push(Finding::warning(
@@ -183,17 +207,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nonstandard_exec_flagged() {
-        assert!(is_nonstandard_exec("/tmp/evil --flag"));
-        assert!(is_nonstandard_exec("/var/bin/socket"));
-        assert!(is_nonstandard_exec("socket")); // no path at all
+    fn suspicious_exec_path_flagged() {
+        assert!(is_suspicious_exec_path("/tmp/evil --flag"));
+        assert!(is_suspicious_exec_path("/dev/shm/socket"));
+        assert!(is_suspicious_exec_path("/var/bin/backdoor"));
     }
 
     #[test]
-    fn standard_exec_not_flagged() {
-        assert!(!is_nonstandard_exec("/usr/bin/python3 --arg"));
-        assert!(!is_nonstandard_exec("/bin/bash -c something"));
-        assert!(!is_nonstandard_exec("/usr/sbin/sshd -D"));
+    fn legitimate_exec_path_not_flagged() {
+        assert!(!is_suspicious_exec_path("/usr/bin/python3 --arg"));
+        assert!(!is_suspicious_exec_path("/usr/lib/xorg/Xorg --display :0"));
+        assert!(!is_suspicious_exec_path("/lib/systemd/systemd-resolved"));
+        assert!(!is_suspicious_exec_path("!!/lib/systemd/systemd-timesyncd"));
+        assert!(!is_suspicious_exec_path("/usr/sbin/sshd -D"));
+    }
+
+    #[test]
+    fn miner_signature_in_execstart_flagged() {
+        let ioc = crate::ioc::IocDatabase::load();
+        // Real-world case: GPU miner disguised as Xorg service
+        assert!(ioc.has_xmrig_signature(
+            "/usr/lib/xorg/Xorg --algo kawpow --server 54.38.240.253:10443 --user wallet.worker --ssl true"
+        ));
+        assert!(ioc.has_xmrig_signature(
+            "/usr/bin/something stratum+tcp://pool.minexmr.com:4444"
+        ));
+    }
+
+    #[test]
+    fn legitimate_execstart_not_flagged_as_miner() {
+        let ioc = crate::ioc::IocDatabase::load();
+        assert!(!ioc.has_xmrig_signature("/usr/lib/xorg/Xorg --display :0 -auth /run/user/1000/gdm/Xauthority"));
+        assert!(!ioc.has_xmrig_signature("/usr/lib/bluetooth/bluetoothd"));
     }
 
     #[test]
