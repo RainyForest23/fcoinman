@@ -39,7 +39,7 @@ fn check_attacker_tools(ioc: &IocDatabase) -> Vec<Finding> {
             let age_secs = fs::metadata(&path)
                 .and_then(|m| m.modified())
                 .and_then(|t| SystemTime::now().duration_since(t)
-                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "")))
+                    .map_err(|_| std::io::Error::other("")))
                 .map(|d| d.as_secs())
                 .unwrap_or(u64::MAX);
 

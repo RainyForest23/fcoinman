@@ -73,7 +73,7 @@ pub fn extract_ioc_strings(path: &Path, ioc: &IocDatabase) -> Vec<String> {
     let mut current: Vec<u8> = Vec::new();
 
     for &byte in &content {
-        if byte >= 0x20 && byte < 0x7f {
+        if (0x20..0x7f).contains(&byte) {
             current.push(byte);
         } else {
             if current.len() >= 8 {
@@ -148,7 +148,7 @@ fn scan_recent_system_binaries() -> Vec<Finding> {
             let age = fs::metadata(&path)
                 .and_then(|m| m.modified())
                 .and_then(|t| SystemTime::now().duration_since(t).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::Other, "")
+                    std::io::Error::other("")
                 }))
                 .map(|d| d.as_secs())
                 .unwrap_or(u64::MAX);
