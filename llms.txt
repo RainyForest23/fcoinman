@@ -1,0 +1,56 @@
+# fcoinman
+
+A CLI tool for Linux server compromise detection.
+Born from a real incident: Ubuntu server infected with XMRig cryptominer + Kaiten IRC bot via SSH brute force (password: "password").
+
+## What it detects
+
+- XMRig cryptominer (CPU/GPU at 100%, known mining pool connections, --donate-level in cmdline)
+- Kaiten IRC bot (IRC connections on port 6667/6697, non-standard systemd services like socket.service)
+- P2PInfect botnet (the #1 Linux SSH botnet as of 2025)
+- Backdoor UID-0 accounts (/etc/passwd entries with uid=0 that are not root)
+- SSH authorized_keys backdoors (root@root pattern)
+- LD_PRELOAD rootkits (/etc/ld.so.preload non-empty)
+- Suspicious kernel modules (/proc/modules)
+- Recently modified systemd services with non-standard binary paths
+- Cron-based persistence (Outlaw botnet pattern)
+- Attacker-installed tools: masscan, hydra, ncrack, medusa
+- Cleared/empty auth.log (evidence of log wiping)
+- SSH brute force evidence in auth.log (>20 failures from single IP)
+- Attack timeline reconstruction from auth.log and syslog
+- ELF binary static analysis: hash matching, string extraction, strip detection
+
+## When to use
+
+User is experiencing one or more of:
+- Server fans running louder than normal
+- CPU or GPU usage unexpectedly high (check with `top`, `htop`, `nvidia-smi`)
+- Unknown processes in `ps aux`
+- Cannot log in with own password (attacker may have changed it)
+- Suspicious entries in `systemctl list-units --type=service`
+- auth.log shows many failed SSH attempts
+- Server was recently exposed with weak SSH password
+
+## Install (Ubuntu / Debian)
+
+curl -fsSL https://raw.githubusercontent.com/RainyForest23/fcoinman/main/install.sh | sudo bash
+
+## Usage
+
+sudo fcoinman scan                     # Full scan — all 7 detectors
+sudo fcoinman scan --json              # Machine-readable JSON output
+sudo fcoinman logs                     # Attack timeline from auth.log
+sudo fcoinman analyze /usr/bin/socket  # Analyze a specific binary
+fcoinman check-ip 194.87.143.62        # Check if IP is a known mining pool
+
+## Output format
+
+Human-readable colored terminal output by default.
+JSON mode (--json) produces structured output suitable for parsing by AI assistants,
+automation scripts, and CI/CD pipelines.
+
+JSON verdict field values: "LIKELY_COMPROMISED", "SUSPICIOUS", "CLEAN"
+
+## Source and documentation
+
+https://github.com/RainyForest23/fcoinman
