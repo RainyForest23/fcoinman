@@ -4,7 +4,15 @@
 
 ---
 
-## Background & Motivation
+## 배경 및 동기 (Background & Motivation)
+
+이 툴은 실제 사고를 기반으로 설계되었습니다. Alienware Aurora R12 (Ubuntu 22.04) 서버가 SSH 브루트포스(비밀번호: "password")로 침해당했으며, 공격자는 다음을 설치했습니다:
+- **XMRig** 채굴기 — `/usr/bin/socket`로 위장, CPU 847% + RTX 3060 2대 GPU 점유
+- **Kaiten IRC 봇** — `/usr/bin/zsd`로 위장, systemd를 통해 지속, IRC C2 서버 연결
+- **백도어 UID-0 계정** (`system:x:0:1001`)
+- **SSH authorized_keys 백도어**
+
+기존 오픈소스 툴 중 이 조합을 명확하게 탐지할 수 있는 것은 없었습니다. `servershield`는 그 공백을 채웁니다.
 
 This tool was designed based on a real incident: an Alienware Aurora R12 (Ubuntu 22.04) server was compromised via SSH brute force (password: "password"). The attacker installed:
 - **XMRig** cryptominer disguised as `/usr/bin/socket` — consumed 847% CPU + 2x RTX 3060 GPU
@@ -16,7 +24,11 @@ No existing open-source tool would have clearly detected this combination. `serv
 
 ---
 
-## Goal
+## 목표 (Goal)
+
+CLI 툴 하나로 단 하나의 질문에 답합니다: **"지금 내 리눅스 서버가 침해당했는가?"**
+
+대상 사용자: 개인 리눅스 서버를 운영하다가 이상한 점(높은 CPU, 팬 소음, 모르는 프로세스)을 발견한 개인 개발자/학생.
 
 A CLI tool that answers one question: **"Is my Linux server currently compromised?"**
 
@@ -24,62 +36,62 @@ Target user: individual developers/students who run personal Linux servers and n
 
 ---
 
-## Non-Goals
+## 범위 외 (Non-Goals)
 
-- Not an enterprise EDR/SIEM
-- No real-time daemon (v1)
-- No automatic remediation (detection only)
-- No Windows/macOS support
+- 엔터프라이즈 EDR/SIEM 아님
+- 실시간 데몬 없음 (v1)
+- 자동 치료 없음 (탐지 전용)
+- Windows/macOS 미지원
 
 ---
 
-## Architecture
+## 아키텍처 (Architecture)
 
-### Language & Distribution
+### 언어 및 배포 (Language & Distribution)
 
-- **Language:** Rust
-- **Distribution:** Single static binary
-- **Installation:** `curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash`
-- **Runtime deps:** None (statically linked)
-- **Minimum OS:** Ubuntu 20.04+ / Debian 11+ (any Linux with `/proc`)
+- **언어:** Rust
+- **배포:** 단일 정적 바이너리
+- **설치:** `curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash`
+- **런타임 의존성:** 없음 (정적 링크)
+- **최소 OS:** Ubuntu 20.04+ / Debian 11+ (`/proc` 있는 모든 Linux)
 
-### Crate Dependencies
+### 외부 라이브러리 (Crate Dependencies)
 
 ```toml
 [dependencies]
-clap    = "4"     # CLI argument parsing
+clap    = "4"     # CLI 파싱
 serde   = { version = "1", features = ["derive"] }
-serde_json = "1"  # IOC database parsing
-colored = "2"     # terminal color output
-sha2    = "0.10"  # file hash comparison
+serde_json = "1"  # IOC DB 파싱
+colored = "2"     # 터미널 컬러 출력
+sha2    = "0.10"  # 파일 해시 비교
 ```
 
-### Directory Structure
+### 디렉토리 구조 (Directory Structure)
 
 ```
 servershield/
 ├── Cargo.toml
-├── install.sh               ← curl installer
+├── install.sh               ← curl 설치 스크립트
 └── src/
-    ├── main.rs              ← entry point, scanner orchestration
-    ├── cli.rs               ← clap CLI definitions
-    ├── finding.rs           ← Finding struct, Severity enum
+    ├── main.rs              ← 진입점, 스캐너 오케스트레이션
+    ├── cli.rs               ← clap CLI 정의
+    ├── finding.rs           ← Finding 구조체, Severity 열거형
     ├── scanner/
     │   ├── mod.rs           ← Scanner trait
-    │   ├── process.rs       ← /proc analysis, CPU/GPU anomalies
-    │   ├── network.rs       ← IRC port, mining pool IP detection
-    │   ├── persistence.rs   ← systemd service anomalies
-    │   ├── accounts.rs      ← UID-0 backdoors, authorized_keys
-    │   └── files.rs         ← suspicious paths, known-bad hashes
+    │   ├── process.rs       ← /proc 분석, CPU/GPU 이상 탐지
+    │   ├── network.rs       ← IRC 포트, 채굴풀 IP 탐지
+    │   ├── persistence.rs   ← systemd 서비스 이상 탐지
+    │   ├── accounts.rs      ← UID-0 백도어, authorized_keys
+    │   └── files.rs         ← 의심 경로, 알려진 악성 해시
     ├── ioc/
-    │   ├── mod.rs           ← IOC loading + matching logic
-    │   └── indicators.json  ← known mining pool IPs, bad hashes, IRC ports
-    └── report.rs            ← colored terminal output, severity summary
+    │   ├── mod.rs           ← IOC 로딩 및 매칭 로직
+    │   └── indicators.json  ← 알려진 채굴풀 IP, 악성 해시, IRC 포트
+    └── report.rs            ← 컬러 터미널 출력, 심각도 요약
 ```
 
 ---
 
-## Core Data Model
+## 핵심 데이터 모델 (Core Data Model)
 
 ```rust
 pub enum Severity { Critical, Warning, Info }
@@ -88,7 +100,7 @@ pub struct Finding {
     pub severity:    Severity,
     pub title:       String,
     pub description: String,
-    pub evidence:    String,  // actual value found (e.g. "uid=0, name=system")
+    pub evidence:    String,  // 실제 발견한 값 (예: "uid=0, name=system")
 }
 ```
 
@@ -101,56 +113,56 @@ pub trait Scanner {
 
 ---
 
-## Scanner Modules
+## 스캐너 모듈 (Scanner Modules)
 
-### 1. `process.rs` — Process Anomaly Scanner
-**What it checks:**
-- Processes consuming >80% CPU sustained (via `/proc/[pid]/stat`)
-- Process name vs binary path mismatch (e.g. process named `socket` but binary is not `/bin/socket`)
-- Known XMRig strings in `/proc/[pid]/cmdline` (pool addresses, `--donate-level`)
-- Processes running from suspicious paths: `/tmp`, `/dev/shm`, `/var/bin`
+### 1. `process.rs` — 프로세스 이상 탐지
+**탐지 항목:**
+- CPU 80% 이상 지속 소비 프로세스 (`/proc/[pid]/stat`)
+- 프로세스 이름과 실제 바이너리 경로 불일치 (예: `socket`이라는 이름인데 `/bin/socket`이 아님)
+- `/proc/[pid]/cmdline`에서 XMRig 시그니처 문자열 (`--donate-level`, 채굴풀 주소)
+- 의심 경로에서 실행 중인 프로세스: `/tmp`, `/dev/shm`, `/var/bin`
 
-**Real incident basis:** XMRig ran as `/usr/bin/socket` consuming 847% CPU
+**실제 사고 근거:** XMRig가 `/usr/bin/socket`으로 위장해 CPU 847% 점유
 
-### 2. `network.rs` — Network Connection Scanner
-**What it checks:**
-- Outbound connections to known mining pool IPs (from `indicators.json`)
-- Connections on IRC ports: 6667, 6697, 7000
-- Parse `/proc/net/tcp` and `/proc/net/tcp6` (no external command dependency)
-- Correlate connection with owning PID via `/proc/net/tcp` inode → `/proc/[pid]/fd`
+### 2. `network.rs` — 네트워크 연결 탐지
+**탐지 항목:**
+- 알려진 채굴풀 IP로의 아웃바운드 연결 (`indicators.json` 기준)
+- IRC 포트 연결: 6667, 6697, 7000
+- `/proc/net/tcp`, `/proc/net/tcp6` 직접 파싱 (외부 명령어 의존 없음)
+- inode → `/proc/[pid]/fd` 매핑으로 연결-프로세스 상관관계 파악
 
-**Real incident basis:** XMRig connected to `194.87.143.62:5332`, `8.217.191.41:5332`
+**실제 사고 근거:** XMRig가 `194.87.143.62:5332`, `8.217.191.41:5332`에 연결
 
-### 3. `persistence.rs` — Persistence Mechanism Scanner
-**What it checks:**
-- All `.service` files in `/etc/systemd/system/` and `/lib/systemd/system/`
-- Services whose `ExecStart` binary path is non-standard (not in `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`)
-- Recently modified service files (mtime within last 30 days)
-- Cron entries in `/etc/cron*` and `/var/spool/cron/`
+### 3. `persistence.rs` — 지속성 메커니즘 탐지
+**탐지 항목:**
+- `/etc/systemd/system/`, `/lib/systemd/system/`의 모든 `.service` 파일
+- `ExecStart` 경로가 비표준인 서비스 (`/usr/bin`, `/usr/sbin`, `/bin`, `/sbin` 외)
+- 최근 30일 내 수정된 서비스 파일
+- `/etc/cron*`, `/var/spool/cron/` 크론 항목
 
-**Real incident basis:** `socket.service` and `zsd.service` installed by attacker
+**실제 사고 근거:** 공격자가 설치한 `socket.service`, `zsd.service`
 
-### 4. `accounts.rs` — Backdoor Account Scanner
-**What it checks:**
-- `/etc/passwd` entries with `uid=0` other than `root`
-- Recently added accounts (compare mtime of `/etc/passwd`)
-- `~/.ssh/authorized_keys` for all users — flag keys with unusual comments or from unknown sources
-- `/root/.ssh/authorized_keys` specifically
+### 4. `accounts.rs` — 백도어 계정 탐지
+**탐지 항목:**
+- `root` 외 `uid=0`인 `/etc/passwd` 항목
+- 최근 추가된 계정 (`/etc/passwd` mtime 비교)
+- 모든 사용자 `~/.ssh/authorized_keys` — 비정상 코멘트나 출처 불명 키 플래그
+- `/root/.ssh/authorized_keys` 집중 검사
 
-**Real incident basis:** `system:x:0:1001` UID-0 backdoor account, `root@root` SSH key
+**실제 사고 근거:** `system:x:0:1001` UID-0 백도어 계정, `root@root` SSH 키
 
-### 5. `files.rs` — Suspicious File Scanner
-**What it checks:**
-- Files in `/tmp`, `/dev/shm`, `/var/bin`, `/var/tmp` that are executable
-- SHA-256 hash comparison against `indicators.json` known-bad hashes
-- SUID/SGID binaries in non-standard locations
-- Recently modified binaries in `/usr/bin`, `/usr/sbin` (mtime within 7 days)
+### 5. `files.rs` — 의심 파일 탐지
+**탐지 항목:**
+- `/tmp`, `/dev/shm`, `/var/bin`, `/var/tmp`의 실행 가능 파일
+- `indicators.json`의 알려진 악성 해시와 SHA-256 비교
+- 비표준 위치의 SUID/SGID 바이너리
+- `/usr/bin`, `/usr/sbin`에서 최근 7일 내 수정된 바이너리
 
-**Real incident basis:** `/var/bin` directory created by attacker; `/usr/bin/socket` and `/usr/bin/zsd` replaced
+**실제 사고 근거:** 공격자가 `/var/bin` 생성, `/usr/bin/socket`과 `/usr/bin/zsd` 교체
 
 ---
 
-## IOC Database (`indicators.json`)
+## IOC 데이터베이스 (`indicators.json`)
 
 ```json
 {
@@ -172,7 +184,7 @@ pub trait Scanner {
 
 ---
 
-## CLI Interface
+## CLI 인터페이스 (CLI Interface)
 
 ```
 $ sudo servershield scan
@@ -200,34 +212,34 @@ Recommendation: Disconnect from network immediately. Do not trust this system.
 
 ---
 
-## Installation Script (`install.sh`)
+## 설치 스크립트 (`install.sh`)
 
 ```bash
 #!/bin/bash
-# Detects arch, downloads correct binary from GitHub Releases, places in /usr/local/bin
+# 아키텍처 자동 감지 후 GitHub Releases에서 바이너리 다운로드 → /usr/local/bin 배치
 ```
 
-One-liner:
+원라이너:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/[user]/servershield/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/RainyForest23/fcoinman/main/install.sh | sudo bash
 ```
 
 ---
 
-## Out of Scope (v1)
+## v1 범위 외 (Out of Scope for v1)
 
-- Real-time daemon / inotify watching
-- Automatic removal of malware
-- Email/Slack alerting
-- Container (Docker/K8s) scanning
-- Non-Linux platforms
+- 실시간 데몬 / inotify 감시
+- 악성코드 자동 제거
+- 이메일/Slack 알림
+- 컨테이너(Docker/K8s) 스캔
+- 비Linux 플랫폼
 
 ---
 
-## Success Criteria
+## 성공 기준 (Success Criteria)
 
-- `sudo servershield scan` completes in <5 seconds on a typical server
-- Correctly identifies all 5 attack artifacts from the original incident
-- Zero false positives on a clean Ubuntu 22.04 install
-- Single binary, no runtime dependencies
-- README tells the origin story (real incident → this tool)
+- `sudo servershield scan` 일반 서버에서 5초 이내 완료
+- 실제 사고의 5가지 공격 흔적 모두 탐지
+- 깨끗한 Ubuntu 22.04에서 오탐(false positive) 없음
+- 단일 바이너리, 런타임 의존성 없음
+- README에 실제 사고 기반 개발 스토리 포함
