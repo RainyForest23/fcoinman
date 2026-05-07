@@ -163,7 +163,8 @@ fcoinman/
     │   ├── network.rs           ← IRC 포트, 채굴풀 IP
     │   ├── persistence.rs       ← systemd + cron + LD_PRELOAD + 커널 모듈
     │   ├── accounts.rs          ← UID-0 백도어, authorized_keys
-    │   ├── files.rs             ← 의심 경로, 악성 해시
+    │   ├── files.rs             ← 의심 경로, 악성 해시, ELF 정적 분석
+    │   ├── logs.rs              ← auth.log 분석, 공격 타임라인 재구성
     │   └── tools.rs             ← 공격자 설치 툴 탐지 (masscan, hydra 등)
     ├── ioc/
     │   ├── mod.rs
@@ -232,15 +233,50 @@ pub trait Scanner {
 
 **근거:** `system:x:0:1001`, `root@root` SSH 키
 
-### 5. `files.rs` — 의심 파일 탐지
+### 5. `files.rs` — 의심 파일 탐지 + 경량 정적 분석
 - `/tmp`, `/dev/shm`, `/var/bin`, `/var/tmp` 실행 파일
 - SHA-256 → `indicators.json` 알려진 해시 비교
 - 비표준 위치 SUID/SGID
 - `/usr/bin`, `/usr/sbin` 최근 7일 내 수정 바이너리
 
-**근거:** `/var/bin` 생성, `/usr/bin/socket`, `/usr/bin/zsd` 교체
+**경량 정적 분석 (Ghidra 없이):**
+- **ELF 매직 바이트 확인** — 확장자가 없거나 위장된 바이너리를 ELF 헤더(`\x7fELF`)로 식별
+- **심볼 스트립 여부** — ELF 섹션 헤더에서 `.symtab` 존재 여부 확인 (스트립 안 된 바이너리는 Kaiten처럼 함수명 노출)
+- **문자열 추출 → IOC 매칭** — 바이너리 내 printable 문자열에서 채굴풀 주소, IRC 서버, 알려진 C2 도메인 패턴 탐지
+- **동적 링크 라이브러리** — ELF `.dynamic` 섹션에서 비정상 라이브러리 의존성 탐지
+- 외부 도구 없이 Rust 표준 파일 I/O만으로 구현 (Ghidra/IDA 불필요)
 
-### 6. `tools.rs` — 공격자 설치 툴 탐지 (신규)
+**근거:** `/var/bin` 생성, `/usr/bin/socket`(stripped XMRig), `/usr/bin/zsd`(non-stripped Kaiten) 교체
+
+### 6. `logs.rs` — 로그 분석 및 공격 타임라인 재구성 (신규)
+사용자가 수동으로 했던 로그 추적 작업을 자동화합니다.
+
+**탐지 항목:**
+- **로그 삭제/클리어 탐지** — `auth.log`가 0바이트이거나 비정상적으로 짧은 경우 즉시 플래그 (공격자의 증거 인멸)
+- **SSH 브루트포스 패턴** — `auth.log`에서 동일 IP의 단시간 다수 실패 로그인 집계
+- **성공한 SSH 로그인 목록** — IP, 시각, 계정명 추출 및 이상 시간대(새벽 2~5시) 플래그
+- **신규 서비스 설치 감지** — `journalctl` 또는 `/var/log/syslog`에서 systemd 서비스 생성 이벤트 탐지
+- **로그 공백 구간 감지** — 로그 로테이션 파일(`auth.log.1`, `.2`) 간 시간 갭 → 삭제된 로그 구간 추정
+- **공격 타임라인 자동 출력** — 위 이벤트를 시간 순으로 정렬해 "언제 무슨 일이 있었는가" 재구성
+
+**출력 예시:**
+```
+[LOG ANALYSIS] Attack timeline reconstructed:
+
+2026-03-28 03:14:22  SSH brute force begins (IP: 45.33.32.156, 2,847 attempts)
+2026-03-28 03:19:08  Successful SSH login as root (IP: 45.33.32.156)
+2026-03-28 03:19:44  New systemd service installed: socket.service
+2026-03-28 03:19:51  New systemd service installed: zsd.service
+2026-03-28 03:20:12  New UID-0 account created: system
+2026-03-28 ~03:21    auth.log CLEARED (0 bytes — evidence destruction)
+
+[WARNING] 25MB log gap detected between auth.log.1 and auth.log
+          Estimated missing period: March 28 - April 20
+```
+
+**근거:** 실제 사고에서 `auth.log` 0바이트(삭제), `auth.log.1`에 브루트포스 흔적, journal로 설치 시각 확인
+
+### 7. `tools.rs` — 공격자 설치 툴 탐지 (신규)
 공격자가 내부 횡적 이동/추가 공격을 위해 설치하는 툴 탐지:
 - `masscan`, `nmap`, `hydra`, `ncrack`, `medusa` 바이너리 존재 여부
 - 시스템 기본 설치가 아닌 비표준 경로(`/tmp`, `/var/bin`)에 있는 경우 우선 플래그
@@ -278,8 +314,14 @@ pub trait Scanner {
 ## CLI 인터페이스
 
 ```bash
-# 기본 스캔
+# 전체 스캔 (프로세스 + 네트워크 + 지속성 + 계정 + 파일 + 로그)
 sudo fcoinman scan
+
+# 로그 분석 + 공격 타임라인만 별도 출력
+sudo fcoinman logs
+
+# 특정 바이너리 정적 분석
+sudo fcoinman analyze /usr/bin/socket
 
 # JSON 출력 (AI/스크립트용)
 sudo fcoinman scan --json
