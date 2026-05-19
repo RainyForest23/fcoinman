@@ -27,6 +27,7 @@ fn main() {
         Commands::Analyze { path } => scanner::files::analyze_binary(&path),
         Commands::CheckIp { ip }   => check_ip(&ip),
         Commands::Summary          => print_summary(),
+        Commands::Update           => do_update(),
     }
 }
 
@@ -59,6 +60,89 @@ fn run_scan(json: bool) {
         report::json::print_json(&findings);
     } else {
         report::print_findings(&findings, count);
+    }
+}
+
+fn do_update() {
+    const REPO: &str = "RainyForest23/fcoinman";
+    const CURRENT: &str = env!("CARGO_PKG_VERSION");
+
+    // Detect architecture
+    let arch = std::process::Command::new("uname")
+        .arg("-m")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let target = match arch.as_str() {
+        "x86_64"          => "x86_64-linux",
+        "aarch64"|"armv7l"=> "aarch64-linux",
+        other => {
+            eprintln!("Unsupported architecture: {}", other);
+            std::process::exit(1);
+        }
+    };
+
+    // Fetch latest release tag via GitHub API
+    println!("[*] Checking for updates (current: v{})...", CURRENT);
+    let api_output = std::process::Command::new("curl")
+        .args(["-fsSL", &format!("https://api.github.com/repos/{}/releases/latest", REPO)])
+        .output();
+    let json = match api_output {
+        Ok(o) if !o.stdout.is_empty() => String::from_utf8_lossy(&o.stdout).to_string(),
+        _ => {
+            eprintln!("[!] Could not reach GitHub API. Check your internet connection.");
+            std::process::exit(1);
+        }
+    };
+
+    // Parse "tag_name": "v0.1.7"
+    let latest = json.lines()
+        .find(|l| l.contains("\"tag_name\""))
+        .and_then(|l| l.split('"').nth(3))
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+
+    if latest.is_empty() {
+        eprintln!("[!] Could not parse latest release tag.");
+        std::process::exit(1);
+    }
+
+    if latest == CURRENT {
+        println!("[✓] Already up to date (v{})", CURRENT);
+        return;
+    }
+
+    println!("[*] New version available: v{} → v{}", CURRENT, latest);
+
+    // Download to a temp file
+    let url = format!(
+        "https://github.com/{}/releases/download/v{}/fcoinman-{}",
+        REPO, latest, target
+    );
+    let tmp = "/tmp/fcoinman_update";
+    println!("[*] Downloading {}...", url);
+    let dl = std::process::Command::new("curl")
+        .args(["-fsSL", &url, "-o", tmp])
+        .status();
+    if !matches!(dl, Ok(s) if s.success()) {
+        eprintln!("[!] Download failed. Check the URL: {}", url);
+        std::process::exit(1);
+    }
+
+    // Find where the current binary lives
+    let self_path = std::env::current_exe()
+        .unwrap_or_else(|_| std::path::PathBuf::from("/usr/local/bin/fcoinman"));
+
+    // chmod +x then atomic rename
+    let _ = std::process::Command::new("chmod").args(["+x", tmp]).status();
+    match std::fs::rename(tmp, &self_path) {
+        Ok(_) => println!("[✓] Updated to v{}  ({})", latest, self_path.display()),
+        Err(e) => {
+            eprintln!("[!] Could not replace binary: {}", e);
+            eprintln!("    Try: sudo mv {} {}", tmp, self_path.display());
+            std::process::exit(1);
+        }
     }
 }
 

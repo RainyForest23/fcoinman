@@ -38,4 +38,7 @@ pub enum Commands {
 
     /// Show ranked attack summary table with geo lookup (top 15 IPs via whois)
     Summary,
+
+    /// Update fcoinman to the latest release from GitHub
+    Update,
 }
