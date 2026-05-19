@@ -1,5 +1,6 @@
 use crate::finding::Finding;
 use crate::scanner::Scanner;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -62,14 +63,26 @@ pub fn parse_auth_log(content: &str, source: &str) -> Vec<Finding> {
         }
     }
 
-    for (ip, count) in &failed_by_ip {
-        if *count > 20 {
-            findings.push(Finding::warning(
-                "SSH brute force attack detected",
-                "Single IP made many failed login attempts — blocked attempts, not a confirmed breach",
-                &format!("IP: {}  —  {} failed attempts  (source: {})", ip, count, source),
-            ));
-        }
+    let brute_force_ips: Vec<(&String, &u32)> = failed_by_ip.iter()
+        .filter(|(_, count)| **count > 20)
+        .collect();
+
+    if !brute_force_ips.is_empty() {
+        let total_attempts: u32 = brute_force_ips.iter().map(|(_, c)| **c).sum();
+        let top = {
+            let mut sorted = brute_force_ips.clone();
+            sorted.sort_by_key(|(_, c)| std::cmp::Reverse(**c));
+            sorted.iter().take(3)
+                .map(|(ip, c)| format!("{} ({}x)", ip, c))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        findings.push(Finding::warning(
+            "SSH brute force attacks detected",
+            "Multiple IPs made many failed login attempts — all blocked, not a confirmed breach. Use fail2ban to reduce noise.",
+            &format!("{} IPs, {} total attempts (source: {}). Top offenders: {}",
+                brute_force_ips.len(), total_attempts, source, top),
+        ));
     }
 
     if !successful_logins.is_empty() {

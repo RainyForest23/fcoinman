@@ -78,11 +78,12 @@ pub fn extract_ioc_strings(path: &Path, ioc: &IocDatabase) -> Vec<String> {
         } else {
             if current.len() >= 8 {
                 let s = String::from_utf8_lossy(&current).to_string();
+                let first_word = s.split_whitespace().next().unwrap_or("");
                 if ioc.has_xmrig_signature(&s)
                     || ioc.mining_pool_ips.iter().any(|ip| s.contains(ip.as_str()))
                     || s.contains("stratum+")
                     || s.contains("PRIVMSG")
-                    || s.contains("OPER ")
+                    || first_word == "OPER"
                     || s.contains("JOIN #")
                 {
                     matches.push(s);
