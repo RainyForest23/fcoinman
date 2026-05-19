@@ -4,7 +4,13 @@ use crate::finding::{Finding, Severity};
 use colored::Colorize;
 
 pub fn print_findings(findings: &[Finding], scanner_count: usize) {
-    println!("\nRunning {} scanners...\n", scanner_count);
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S %Z");
+    let hostname = std::fs::read_to_string("/etc/hostname")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    println!("\nScanned at: {}  |  Host: {}", now, hostname);
+    println!("Running {} scanners...\n", scanner_count);
 
     if findings.is_empty() {
         println!("{}", "No issues found. System appears clean.".green().bold());
