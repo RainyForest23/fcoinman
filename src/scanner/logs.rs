@@ -64,9 +64,9 @@ pub fn parse_auth_log(content: &str, source: &str) -> Vec<Finding> {
 
     for (ip, count) in &failed_by_ip {
         if *count > 20 {
-            findings.push(Finding::critical(
+            findings.push(Finding::warning(
                 "SSH brute force attack detected",
-                "Single IP made many failed login attempts in a short window",
+                "Single IP made many failed login attempts — blocked attempts, not a confirmed breach",
                 &format!("IP: {}  —  {} failed attempts  (source: {})", ip, count, source),
             ));
         }
@@ -172,7 +172,8 @@ mod tests {
             );
         }
         let findings = parse_auth_log(&log, "test");
-        assert!(findings.iter().any(|f| f.title.contains("brute force")));
+        let bf = findings.iter().find(|f| f.title.contains("brute force")).unwrap();
+        assert!(matches!(bf.severity, crate::finding::Severity::Warning));
     }
 
     #[test]

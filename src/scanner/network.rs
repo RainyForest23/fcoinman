@@ -89,7 +89,7 @@ fn scan_connections(content: &str, ioc: &IocDatabase) -> Vec<Finding> {
         if ioc.is_irc_port(entry.remote_port) {
             findings.push(Finding::warning(
                 "Active IRC connection detected",
-                "IRC (port 6667/6697/7000) is the C2 channel for Kaiten and similar botnets",
+                "IRC (port 6667/6697/6666) is the C2 channel for Kaiten and similar botnets — verify with `ss -tnp`",
                 &format!("{}:{}", entry.remote_ip, entry.remote_port),
             ));
         }

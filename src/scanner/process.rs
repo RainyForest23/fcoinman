@@ -14,8 +14,10 @@ impl ProcessScanner {
 impl Scanner for ProcessScanner {
 
     fn scan(&self) -> Vec<Finding> {
+        let my_pid = std::process::id().to_string();
         list_pids()
             .iter()
+            .filter(|pid| *pid != &my_pid)
             .flat_map(|pid| check_process(pid, &self.ioc))
             .collect()
     }
