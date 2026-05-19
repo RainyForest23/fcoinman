@@ -95,6 +95,151 @@ pub fn parse_auth_log(content: &str, source: &str) -> Vec<Finding> {
     findings
 }
 
+// ── Summary ──────────────────────────────────────────────────────────────────
+
+pub fn print_summary() {
+    println!("\n[ATTACK SUMMARY] SSH brute force analysis\n");
+
+    // (count, first_ts, last_ts) — process auth.log.1 first (older), then auth.log (newer)
+    let mut agg: HashMap<String, (u32, String, String)> = HashMap::new();
+    let mut total_lines = 0usize;
+    let mut found_files: Vec<&str> = Vec::new();
+
+    for path in &["/var/log/auth.log.1", "/var/log/auth.log"] {
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        total_lines += content.lines().count();
+        found_files.push(path);
+        for line in content.lines() {
+            if line.contains("Failed password") || line.contains("Invalid user") {
+                if let Some(ip) = extract_ip(line) {
+                    let ts = extract_timestamp(line);
+                    let e = agg.entry(ip).or_insert((0, ts.clone(), ts.clone()));
+                    e.0 += 1;
+                    e.2 = ts; // last seen — lines are chronological, overwrite each time
+                }
+            }
+        }
+    }
+
+    if agg.is_empty() {
+        println!("  No auth logs found or no failed attempts recorded.");
+        return;
+    }
+
+    let mut rows: Vec<(String, u32, String, String)> = agg
+        .into_iter()
+        .filter(|(_, (c, _, _))| *c > 20)
+        .map(|(ip, (c, f, l))| (ip, c, f, l))
+        .collect();
+    rows.sort_by_key(|r| std::cmp::Reverse(r.1));
+
+    let total_attempts: u32 = rows.iter().map(|(_, c, _, _)| c).sum();
+
+    println!("  Log files : {}", found_files.join(" + "));
+    println!("  Lines     : {}", fmt_num(total_lines as u32));
+    println!("  Period    : {} ~ {}", rows.iter().map(|r| r.2.clone()).min().unwrap_or_default(),
+                                       rows.iter().map(|r| r.3.clone()).max().unwrap_or_default());
+    println!("  Attackers : {} unique IPs  |  Total attempts: {} (all blocked)\n",
+        fmt_num(rows.len() as u32), fmt_num(total_attempts));
+
+    // Subnet clusters (/24)
+    let mut subnets: HashMap<String, (u32, u32)> = HashMap::new(); // prefix → (ip_count, attempt_count)
+    for (ip, count, _, _) in &rows {
+        let prefix = ip.rsplit_once('.').map(|x| x.0).unwrap_or("").to_string();
+        let e = subnets.entry(prefix).or_insert((0, 0));
+        e.0 += 1;
+        e.1 += count;
+    }
+    let mut clusters: Vec<(String, u32, u32)> = subnets
+        .into_iter()
+        .filter(|(_, (ip_cnt, _))| *ip_cnt >= 3)
+        .map(|(p, (ic, ac))| (p, ic, ac))
+        .collect();
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.2));
+    if !clusters.is_empty() {
+        println!("  [!] Coordinated subnet attacks detected:");
+        for (prefix, ip_cnt, att_cnt) in &clusters {
+            println!("      {}.0/24 — {} IPs, {} attempts (likely botnet)",
+                prefix, ip_cnt, fmt_num(*att_cnt));
+        }
+        println!();
+    }
+
+    // Table header
+    let geo_available = std::process::Command::new("which").arg("whois").output()
+        .map(|o| o.status.success()).unwrap_or(false);
+
+    if geo_available {
+        println!("  {:<4}  {:>9}  {:<16}  {:<34}  {:<6}  Org",
+            "Rank", "Attempts", "IP", "Period", "CC");
+        println!("  {}  {}  {}  {}  {}  {}",
+            "─".repeat(4), "─".repeat(9), "─".repeat(16), "─".repeat(34), "─".repeat(6), "─".repeat(24));
+    } else {
+        println!("  {:<4}  {:>9}  {:<16}  Period",
+            "Rank", "Attempts", "IP");
+        println!("  {}  {}  {}  {}",
+            "─".repeat(4), "─".repeat(9), "─".repeat(16), "─".repeat(34));
+    }
+
+    for (rank, (ip, count, first, last)) in rows.iter().take(20).enumerate() {
+        let period = format!("{} ~ {}", first, last);
+        if geo_available && rank < 15 {
+            let (cc, org) = whois_lookup(ip);
+            println!("  {:>4}  {:>9}  {:<16}  {:<34}  {:<6}  {}",
+                rank + 1, fmt_num(*count), ip, period, cc, org);
+        } else if geo_available {
+            println!("  {:>4}  {:>9}  {:<16}  {:<34}  {:<6}  -",
+                rank + 1, fmt_num(*count), ip, period, "-");
+        } else {
+            println!("  {:>4}  {:>9}  {:<16}  {}",
+                rank + 1, fmt_num(*count), ip, period);
+        }
+    }
+
+    if rows.len() > 20 {
+        println!("  ... and {} more (all blocked)", rows.len() - 20);
+    }
+    println!();
+}
+
+fn fmt_num(n: u32) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 { result.push(','); }
+        result.push(c);
+    }
+    result.chars().rev().collect()
+}
+
+fn whois_lookup(ip: &str) -> (String, String) {
+    // Use `timeout 5` to avoid hanging on slow whois servers
+    let output = std::process::Command::new("timeout")
+        .args(["5", "whois", ip])
+        .output();
+    let text = match output {
+        Ok(o) if o.status.success() || !o.stdout.is_empty() =>
+            String::from_utf8_lossy(&o.stdout).to_string(),
+        _ => return ("-".to_string(), "-".to_string()),
+    };
+    let cc = text.lines()
+        .find(|l| l.to_lowercase().starts_with("country:"))
+        .and_then(|l| l.split_once(':').map(|x| x.1.trim().to_string()))
+        .unwrap_or_else(|| "-".to_string());
+    let org = text.lines()
+        .find(|l| {
+            let lo = l.to_lowercase();
+            lo.starts_with("netname:") || lo.starts_with("orgname:") || lo.starts_with("org-name:")
+        })
+        .and_then(|l| l.split_once(':').map(|x| x.1.trim().to_string()))
+        .map(|val| if val.len() > 24 { val[..24].to_string() } else { val })
+        .unwrap_or_else(|| "-".to_string());
+    (cc, org)
+}
+
 pub fn print_timeline() {
     println!("\n[LOG ANALYSIS] Reconstructing attack timeline...\n");
 

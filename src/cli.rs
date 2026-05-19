@@ -35,4 +35,7 @@ pub enum Commands {
         /// IP address to look up
         ip: String,
     },
+
+    /// Show ranked attack summary table with geo lookup (top 15 IPs via whois)
+    Summary,
 }

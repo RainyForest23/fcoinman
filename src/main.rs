@@ -11,7 +11,7 @@ use scanner::Scanner;
 use scanner::{
     accounts::AccountScanner,
     files::FileScanner,
-    logs::{LogScanner, print_timeline},
+    logs::{LogScanner, print_timeline, print_summary},
     network::NetworkScanner,
     persistence::PersistenceScanner,
     process::ProcessScanner,
@@ -26,6 +26,7 @@ fn main() {
         Commands::Logs           => print_timeline(),
         Commands::Analyze { path } => scanner::files::analyze_binary(&path),
         Commands::CheckIp { ip }   => check_ip(&ip),
+        Commands::Summary          => print_summary(),
     }
 }
 
