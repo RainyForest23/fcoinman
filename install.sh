@@ -22,9 +22,9 @@ fi
 # Detect architecture
 ARCH=$(uname -m)
 case "$ARCH" in
-    x86_64)  TARGET="x86_64-unknown-linux-musl" ;;
-    aarch64) TARGET="aarch64-unknown-linux-musl" ;;
-    armv7l)  TARGET="armv7-unknown-linux-musleabihf" ;;
+    x86_64)  TARGET="x86_64-linux" ;;
+    aarch64) TARGET="aarch64-linux" ;;
+    armv7l)  TARGET="aarch64-linux" ;;
     *)
         echo -e "${RED}[!] Unsupported architecture: $ARCH${NC}"
         exit 1
