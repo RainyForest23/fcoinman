@@ -64,6 +64,9 @@ fn scan_systemd_services(ioc: &IocDatabase) -> Vec<Finding> {
             if path.extension().and_then(|e| e.to_str()) != Some("service") {
                 continue;
             }
+            // Symlinks are created by `systemctl enable` pointing to /lib/systemd/system/
+            // — skip them to avoid noise from normal package installs and snap services
+            if path.is_symlink() { continue; }
             let content = match fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(_) => continue,
@@ -95,9 +98,9 @@ fn scan_systemd_services(ioc: &IocDatabase) -> Vec<Finding> {
                 if !flagged_recent {
                     if let Some(age) = age_secs(&path) {
                         if age < RECENT_DAYS_SECS {
-                            findings.push(Finding::warning(
-                                "Recently modified systemd service",
-                                "Service file in /etc/systemd/system changed within last 30 days",
+                            findings.push(Finding::info(
+                                "Recently added systemd service",
+                                "Real service file (not symlink) in /etc/systemd/system created within last 30 days",
                                 &path_str,
                             ));
                             flagged_recent = true;

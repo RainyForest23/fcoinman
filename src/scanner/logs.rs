@@ -320,7 +320,8 @@ fn extract_ip(line: &str) -> Option<String> {
 }
 
 fn extract_timestamp(line: &str) -> String {
-    line.splitn(4, ' ').take(3).collect::<Vec<_>>().join(" ")
+    // split_whitespace handles "May  9 ..." (double space for single-digit days) correctly
+    line.split_whitespace().take(3).collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
