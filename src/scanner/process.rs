@@ -112,14 +112,21 @@ pub fn check_process(pid: &str, ioc: &IocDatabase) -> Vec<Finding> {
         ));
     }
 
-    // High CPU
-    if let Some(cpu) = cpu_percent_since_start(pid) {
-        if cpu > 80.0 {
-            findings.push(Finding::warning(
-                "High CPU process detected",
-                "Sustained >80% CPU since process start — possible cryptominer",
-                &format!("pid={} cpu={:.1}% exe={}", pid, cpu, exe),
-            ));
+    // High CPU — only meaningful for processes outside standard system paths.
+    // Xorg, compilers, ML training, JetBrains all legitimately peg CPUs.
+    let in_system_path = exe.starts_with("/usr/") || exe.starts_with("/bin/")
+        || exe.starts_with("/sbin/") || exe.starts_with("/lib/")
+        || exe.starts_with("/snap/") || exe.starts_with("/opt/")
+        || exe.starts_with("/home/");
+    if !in_system_path && !exe.is_empty() {
+        if let Some(cpu) = cpu_percent_since_start(pid) {
+            if cpu > 80.0 {
+                findings.push(Finding::warning(
+                    "High CPU process from non-standard path",
+                    "Sustained >80% CPU since process start from outside standard system paths — possible cryptominer",
+                    &format!("pid={} cpu={:.1}% exe={}", pid, cpu, exe),
+                ));
+            }
         }
     }
 

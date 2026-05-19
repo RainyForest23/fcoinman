@@ -63,7 +63,6 @@ fn check_attacker_tools(ioc: &IocDatabase) -> Vec<Finding> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::ioc::IocDatabase;
 
     #[test]

@@ -50,7 +50,9 @@ fn age_secs(path: &Path) -> Option<u64> {
 
 fn scan_systemd_services(ioc: &IocDatabase) -> Vec<Finding> {
     let mut findings = Vec::new();
-    let dirs = ["/etc/systemd/system", "/lib/systemd/system"];
+    // /lib/systemd/system is package-managed and updated by apt — skip it to avoid noise.
+    // /etc/systemd/system is where admins and attackers create/override services.
+    let dirs = ["/etc/systemd/system"];
 
     for dir in &dirs {
         let entries = match fs::read_dir(dir) {
@@ -67,6 +69,7 @@ fn scan_systemd_services(ioc: &IocDatabase) -> Vec<Finding> {
                 Err(_) => continue,
             };
             let path_str = path.display().to_string();
+            let mut flagged_recent = false;
 
             for line in content.lines() {
                 let line = line.trim();
@@ -89,13 +92,16 @@ fn scan_systemd_services(ioc: &IocDatabase) -> Vec<Finding> {
                     ));
                 }
 
-                if let Some(age) = age_secs(&path) {
-                    if age < RECENT_DAYS_SECS {
-                        findings.push(Finding::warning(
-                            "Recently modified systemd service",
-                            "Service file changed within last 30 days",
-                            &path_str,
-                        ));
+                if !flagged_recent {
+                    if let Some(age) = age_secs(&path) {
+                        if age < RECENT_DAYS_SECS {
+                            findings.push(Finding::warning(
+                                "Recently modified systemd service",
+                                "Service file in /etc/systemd/system changed within last 30 days",
+                                &path_str,
+                            ));
+                            flagged_recent = true;
+                        }
                     }
                 }
             }
@@ -167,20 +173,12 @@ fn check_ld_preload() -> Vec<Finding> {
 
 fn scan_kernel_modules() -> Vec<Finding> {
     let mut findings = Vec::new();
-    // Known-legitimate module name prefixes
-    let legit: &[&str] = &[
-        "ip_", "nf_", "xt_", "br_", "veth", "tun", "tap", "loop",
-        "ext4", "btrfs", "xfs", "fat", "nfs", "cifs",
-        "nvidia", "amdgpu", "i915", "drm", "nouveau",
-        "e1000", "igb", "ixgbe", "r8169", "virtio", "vmxnet",
-        "uhci_hcd", "xhci_hcd", "ehci_hcd", "ahci", "nvme", "sd_mod",
-        "dm_", "md_", "raid",
-        "bluetooth", "cfg80211", "mac80211",
-        "selinux", "apparmor",
-        "overlay", "aufs", "fuse",
-        "snd_", "hid_", "usbhid", "evdev", "input_",
-        "tcp_", "udp_", "sctp",
-        "zram", "squashfs",
+    // LKM rootkit names — whitelisting every legitimate module is impossible,
+    // so we only flag known-malicious names.
+    const ROOTKIT_MODULES: &[&str] = &[
+        "diamorphine", "reptile", "tyton", "azazel", "suterusu",
+        "modhide", "knark", "adore_ng", "kbeast", "kiss_me_twice",
+        "override", "rootkit", "r00tkit",
     ];
     let content = match fs::read_to_string("/proc/modules") {
         Ok(c) => c,
@@ -188,13 +186,10 @@ fn scan_kernel_modules() -> Vec<Finding> {
     };
     for line in content.lines() {
         let module = line.split_whitespace().next().unwrap_or("");
-        if module.len() < 3 { continue; }
-        let known = legit.iter().any(|p| module.starts_with(p))
-            || module == "kvm" || module == "kvm_intel" || module == "kvm_amd";
-        if !known {
-            findings.push(Finding::info(
-                "Unrecognized kernel module",
-                "Module not in known-good list — verify with `modinfo <module>`",
+        if ROOTKIT_MODULES.iter().any(|bad| module == *bad || module.contains(bad)) {
+            findings.push(Finding::critical(
+                "Known LKM rootkit module loaded",
+                "Kernel module name matches a known Linux rootkit — immediate investigation required",
                 module,
             ));
         }
