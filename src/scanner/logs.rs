@@ -1,6 +1,5 @@
 use crate::finding::Finding;
 use crate::scanner::Scanner;
-use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
