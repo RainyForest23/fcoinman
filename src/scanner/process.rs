@@ -112,19 +112,24 @@ pub fn check_process(pid: &str, ioc: &IocDatabase) -> Vec<Finding> {
         ));
     }
 
-    // High CPU — only meaningful for processes outside standard system paths.
-    // Xorg, compilers, ML training, JetBrains all legitimately peg CPUs.
-    let in_system_path = exe.starts_with("/usr/") || exe.starts_with("/bin/")
-        || exe.starts_with("/sbin/") || exe.starts_with("/lib/")
-        || exe.starts_with("/snap/") || exe.starts_with("/opt/")
-        || exe.starts_with("/home/");
-    if !in_system_path && !exe.is_empty() {
-        if let Some(cpu) = cpu_percent_since_start(pid) {
-            if cpu > 80.0 {
+    // High CPU check: flag if process is from a suspicious path OR if a system-path
+    // binary has miner signatures in its cmdline (e.g. real Xorg replaced by miner:
+    // /usr/lib/xorg/Xorg --algo kawpow ...).
+    if let Some(cpu) = cpu_percent_since_start(pid) {
+        if cpu > 80.0 {
+            let suspicious_path = ioc.is_suspicious_path(&exe);
+            let miner_cmdline = ioc.has_xmrig_signature(&cmd);
+            if suspicious_path {
                 findings.push(Finding::warning(
-                    "High CPU process from non-standard path",
-                    "Sustained >80% CPU since process start from outside standard system paths — possible cryptominer",
+                    "High CPU process from suspicious path",
+                    "Sustained >80% CPU from /tmp, /dev/shm, or /var/bin — possible cryptominer",
                     &format!("pid={} cpu={:.1}% exe={}", pid, cpu, exe),
+                ));
+            } else if miner_cmdline {
+                findings.push(Finding::critical(
+                    "High CPU process with miner signature in cmdline",
+                    "System-path binary running with cryptominer flags — possible Xorg/service impersonation",
+                    &format!("pid={} cpu={:.1}% exe={} cmd={}", pid, cpu, exe, &cmd[..cmd.len().min(120)]),
                 ));
             }
         }
