@@ -119,13 +119,17 @@ pub fn print_timeline() {
             content.lines().count()
         );
 
-        let mut failed: HashMap<String, u32> = HashMap::new();
+        // (count, first_timestamp, last_timestamp)
+        let mut failed: HashMap<String, (u32, String, String)> = HashMap::new();
         let mut events: Vec<String> = Vec::new();
 
         for line in content.lines() {
             if line.contains("Failed password") || line.contains("Invalid user") {
                 if let Some(ip) = extract_ip(line) {
-                    *failed.entry(ip).or_insert(0) += 1;
+                    let ts = extract_timestamp(line);
+                    let entry = failed.entry(ip).or_insert((0, ts.clone(), ts.clone()));
+                    entry.0 += 1;
+                    entry.2 = ts; // last seen — lines are in chronological order
                 }
             }
             if line.contains("Accepted password") || line.contains("Accepted publickey") {
@@ -139,9 +143,12 @@ pub fn print_timeline() {
             }
         }
 
-        for (ip, count) in &failed {
+        for (ip, (count, first, last)) in &failed {
             if *count > 20 {
-                events.push(format!("  [BRUTE FORCE] {} — {} failed SSH attempts", ip, count));
+                events.push(format!(
+                    "  [BRUTE FORCE] {} — {} attempts  ({} ~ {})",
+                    ip, count, first, last
+                ));
             }
         }
 
