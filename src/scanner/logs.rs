@@ -35,14 +35,65 @@ fn check_cleared_logs() -> Vec<Finding> {
 
 fn scan_auth_logs() -> Vec<Finding> {
     let mut findings = Vec::new();
-    for path in &["/var/log/auth.log", "/var/log/auth.log.1"] {
-        if let Ok(content) = fs::read_to_string(path) {
-            findings.extend(parse_auth_log(&content, path));
+    let mut all_failed: HashMap<String, u32> = HashMap::new();
+    let mut all_logins: Vec<String> = Vec::new();
+    let mut sources: Vec<&str> = Vec::new();
+
+    for path in &["/var/log/auth.log.1", "/var/log/auth.log"] {
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        sources.push(path);
+        for line in content.lines() {
+            if line.contains("Failed password") || line.contains("Invalid user") {
+                if let Some(ip) = extract_ip(line) {
+                    *all_failed.entry(ip).or_insert(0) += 1;
+                }
+            }
+            if line.contains("Accepted password") || line.contains("Accepted publickey") {
+                if let Some(ip) = extract_ip(line) {
+                    let ts = extract_timestamp(line);
+                    all_logins.push(format!("{} from {}", ts, ip));
+                }
+            }
         }
     }
+
+    let brute_force_ips: Vec<(&String, &u32)> = all_failed.iter()
+        .filter(|(_, count)| **count > 20)
+        .collect();
+
+    if !brute_force_ips.is_empty() {
+        let total_attempts: u32 = brute_force_ips.iter().map(|(_, c)| **c).sum();
+        let top = {
+            let mut sorted = brute_force_ips.clone();
+            sorted.sort_by_key(|(_, c)| std::cmp::Reverse(**c));
+            sorted.iter().take(3)
+                .map(|(ip, c)| format!("{} ({}x)", ip, c))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        findings.push(Finding::warning(
+            "SSH brute force attacks detected",
+            "Multiple IPs made many failed login attempts — all blocked, not a confirmed breach. Use fail2ban to reduce noise.",
+            &format!("{} IPs, {} total attempts. Top offenders: {}",
+                brute_force_ips.len(), total_attempts, top),
+        ));
+    }
+
+    if !all_logins.is_empty() {
+        findings.push(Finding::info(
+            "Successful SSH logins recorded",
+            "Review these logins — confirm each is authorized",
+            &all_logins.join(" | "),
+        ));
+    }
+
     findings
 }
 
+#[cfg(test)]
 pub fn parse_auth_log(content: &str, source: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut failed_by_ip: HashMap<String, u32> = HashMap::new();
