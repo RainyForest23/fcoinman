@@ -1,6 +1,6 @@
 [package]
 name = "fcoinman"
-version = "0.1.0"
+version = "0.1.14"
 edition = "2021"
 description = "Linux server compromise detector — based on real XMRig + Kaiten IRC bot incident"
 license = "MIT"
