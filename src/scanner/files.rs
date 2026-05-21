@@ -6,7 +6,6 @@ use std::fs;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::time::SystemTime;
 
 pub struct FileScanner {
     pub ioc: IocDatabase,
@@ -21,7 +20,6 @@ impl Scanner for FileScanner {
     fn scan(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
         findings.extend(scan_suspicious_paths(&self.ioc));
-        findings.extend(scan_recent_system_binaries());
         findings.extend(scan_system_binary_hashes(&self.ioc));
         findings
     }
@@ -134,37 +132,9 @@ fn scan_suspicious_paths(ioc: &IocDatabase) -> Vec<Finding> {
     findings
 }
 
-fn scan_recent_system_binaries() -> Vec<Finding> {
-    let mut findings = Vec::new();
-    let seven_days = 7 * 86400u64;
-
-    for dir in &["/usr/bin", "/usr/sbin"] {
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() { continue; }
-            let age = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .and_then(|t| SystemTime::now().duration_since(t).map_err(|_| {
-                    std::io::Error::other("")
-                }))
-                .map(|d| d.as_secs())
-                .unwrap_or(u64::MAX);
-
-            if age < seven_days {
-                findings.push(Finding::warning(
-                    "Recently modified system binary",
-                    "Binary in /usr/bin or /usr/sbin was modified within last 7 days",
-                    &format!("{}", path.display()),
-                ));
-            }
-        }
-    }
-    findings
-}
+// scan_recent_system_binaries removed — fires on every apt upgrade and fresh install,
+// producing only noise. Tampering is detected more accurately by hash matching and
+// IOC string extraction in scan_system_binary_hashes().
 
 fn scan_system_binary_hashes(ioc: &IocDatabase) -> Vec<Finding> {
     let mut findings = Vec::new();

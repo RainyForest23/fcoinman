@@ -83,10 +83,18 @@ fn scan_auth_logs() -> Vec<Finding> {
     }
 
     if !all_logins.is_empty() {
+        let total = all_logins.len();
+        let recent: Vec<&String> = all_logins.iter().rev().take(5).collect();
+        let evidence = if total > 5 {
+            format!("{} total logins. Most recent: {}", total,
+                recent.iter().rev().map(|s| s.as_str()).collect::<Vec<_>>().join(" | "))
+        } else {
+            all_logins.join(" | ")
+        };
         findings.push(Finding::info(
             "Successful SSH logins recorded",
             "Review these logins — confirm each is authorized",
-            &all_logins.join(" | "),
+            &evidence,
         ));
     }
 
